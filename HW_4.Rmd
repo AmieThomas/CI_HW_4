@@ -1,0 +1,145 @@
+---
+title: "HW_4"
+author: "Amie Thomas"
+date: "2024-04-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(rdd)
+library(np)
+library(readr)
+library(rdrobust)
+library(ggplot2)
+```
+
+```{r}
+#load in data
+proximal <- read.csv("Proximal.csv")
+rdd <- read.csv("RDD.csv")
+```
+
+```{r}
+set.seed(592)
+
+nuisance_size <- nrow(proximal) / 2
+nuisance_indices <- sample(nrow(proximal), size = nuisance_size)
+prox_nuisance <- proximal[nuisance_indices, ]
+prox_effect <- proximal[-nuisance_indices, ]
+
+# Split fold 1 into treatment and control
+treatment_nu <- subset(prox_nuisance, A == 1)
+control_nu <- subset(prox_nuisance, A == 0)
+
+ps_mod <- glm(A ~ W + Z + X, data = prox_nuisance, family = binomial(link = "logit"))
+prox_effect$pscores <- predict(ps_mod, type = "response", newdata = prox_effect)
+
+dr_mod_1 <- lm(Y ~ W + Z + X, data = treatment_nu)
+dr_mod_0 <- lm(Y ~ W + Z + X, data = control_nu)
+
+prox_effect$mu_1 <- predict(dr_mod_1, newdata = prox_effect)
+prox_effect$mu_0 <- predict(dr_mod_0, newdata = prox_effect)
+
+
+dr_estimate <- mean((prox_effect$A * (prox_effect$Y - prox_effect$mu_1)) / prox_effect$pscores +  (prox_effect$mu_1) - ((1-prox_effect$A) * (prox_effect$Y - prox_effect$mu_0)/ (1-prox_effect$pscores) - prox_effect$mu_0))
+
+print(dr_estimate)
+```
+```{r}
+set.seed(592)
+
+nuisance_size <- nrow(proximal) / 2
+nuisance_indices <- sample(nrow(proximal), size = nuisance_size)
+prox_nuisance <- proximal[nuisance_indices, ]
+prox_effect <- proximal[-nuisance_indices, ]
+
+model1<- lm(W~ A + Z + X, data = prox_nuisance)
+prox_effect$wh <- predict(model1, type = "response", newdata = prox_effect)
+
+model2 <- lm(Y ~ wh + A + X, data = prox_effect)
+ATE <- coef(model2)["A"]
+print(ATE)
+```
+
+```{r}
+c0 <- 0.7
+bandwidths <- c(2, 1, 0.3)
+
+results <- list()
+
+# Loop through each bandwidth
+for (h in bandwidths) {
+  result <- rdrobust(rdd$y, rdd$z, c = c0, kernel = "uniform", h = h)
+  results[[as.character(h)]] <- result
+  
+  # Summary of result for each bandwidth
+  print(summary(result))
+  
+  # Plot for each bandwidth
+  rdplot(rdd$y, rdd$z, c = c0, kernel = "uniform", h = h)
+}
+```
+
+```{r}
+c0 <- 0.7
+bandwidths <- c(2, 1, 0.3)
+
+results <- list()
+
+# Loop through each bandwidth
+for (h in bandwidths) {
+  result <- rdrobust(rdd$y, rdd$z, c = c0, kernel = "tri", h = h)
+  results[[as.character(h)]] <- result
+  
+  # Summary of result for each bandwidth
+  print(summary(result))
+  
+  # Plot for each bandwidth
+  rdplot(rdd$y, rdd$z, c = c0, kernel = "tri", h = h)
+}
+
+```
+
+```{r}
+c0 <- 0.7
+bandwidths <- c(2, 1, 0.3)
+
+results <- list()
+
+# Loop through each bandwidth
+for (h in bandwidths) {
+  result <- rdrobust(rdd$y, rdd$z, c = c0, kernel = "uniform", h = h, p = 3)
+  results[[as.character(h)]] <- result
+  
+  # Summary of result for each bandwidth
+  print(summary(result))
+  
+  # Plot for each bandwidth
+  rdplot(rdd$y, rdd$z, c = c0, kernel = "uniform", h = h, p = 3)
+}
+
+
+```
+
+
+```{r}
+#3
+Z <- rdd$Z  
+cutoff <- 0.7
+below_cutoff <- rdd$z[rdd$z < cutoff]
+above_cutoff <- rdd$z[rdd$z > cutoff]
+ggplot() +
+  geom_histogram(aes(x = below_cutoff), fill = "pink", alpha = 0.5) +
+  geom_histogram(aes(x = above_cutoff), fill = "green", alpha = 0.5) +
+  geom_vline(xintercept = cutoff, linetype = "dashed") +
+  labs(title = "Density Plot of Running Variable (Z)",
+       x = "Z",
+       y = "Density") +
+  scale_fill_manual(values = c("pink", "green"),
+                    labels = c("Below Threshold", "Above Threshold")) +
+  theme_minimal()
+```
+
+```
